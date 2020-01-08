@@ -1,0 +1,5 @@
+AccNetIncome = CALCULATE (
+    SUM ( 'ACTUAL'[Net Income] ),
+    ALL ( 'ACTUAL' ),
+    'ACTUAL'[MONTH] <= EARLIER ( 'ACTUAL'[MONTH] )
+)
