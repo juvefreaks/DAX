@@ -93,35 +93,38 @@ def gate(ac: float, prev_pnl: float, ac_limit: float = 0.20, loss_limit: float =
                     f"keep the rule running")
 
 
+def play_round(d, s, e, A, B, rnd, prev_pnl_b, ac_limit=0.20, loss_limit=3.0):
+    """Play one round over bars s..e (inclusive). Mutates books A and B, returns the round record."""
+    ac = autocorr(d, s)
+    call, why = gate(ac, prev_pnl_b, ac_limit, loss_limit)
+    eqA0, eqB0 = A.equity(d.close.iloc[s - 1]), B.equity(d.close.iloc[s - 1])
+    nfA, nfB = len(A.fills), len(B.fills)
+    for i in range(s, e + 1):
+        row, ts = d.iloc[i], d.ts.iloc[i]
+        A.step(row, ts, rnd)
+        if call == "HOLD":
+            B.step(row, ts, rnd)
+    last = d.iloc[e]
+    B.flatten(last.close, d.ts.iloc[e], rnd, "round boundary: Book B goes flat")
+    pnlA, pnlB = A.equity(last.close) - eqA0, B.equity(last.close) - eqB0
+    return dict(
+        round=rnd, start=d.ts.iloc[s].isoformat(), end=d.ts.iloc[e].isoformat(),
+        start_idx=s, end_idx=e, call=call, reason=why, autocorr=ac, prev_pnl_b=prev_pnl_b,
+        pnl_a=pnlA, pnl_b=pnlB, pos_a=A.pos, pos_b=B.pos,
+        equity_a=A.equity(last.close), equity_b=B.equity(last.close),
+        fills=A.fills[nfA:] + B.fills[nfB:],
+    )
+
+
 def replay(d: pd.DataFrame, n_rounds: int = 12, bars_per_round: int = 5, cap: float = 0.1,
            fee_bps: float = 2.0, ac_limit: float = 0.20, loss_limit: float = 3.0):
     """Replay the last n_rounds*bars_per_round bars as rounds. Returns (rounds, bookA, bookB)."""
-    N = len(d)
-    start0 = N - n_rounds * bars_per_round
+    start0 = len(d) - n_rounds * bars_per_round
     A, B = Book("A", cap, fee_bps), Book("B", cap, fee_bps)
-    rounds, prev_pnl_b = [], 0.0
+    rounds, prev = [], 0.0
     for r in range(n_rounds):
-        s, e = start0 + r * bars_per_round, start0 + (r + 1) * bars_per_round
-        ac = autocorr(d, s)
-        gate_prev = prev_pnl_b
-        call, why = gate(ac, gate_prev, ac_limit, loss_limit)
-        eqA0, eqB0 = A.equity(d.close.iloc[s - 1]), B.equity(d.close.iloc[s - 1])
-        nfA, nfB = len(A.fills), len(B.fills)
-        for i in range(s, e):
-            row, ts = d.iloc[i], d.ts.iloc[i]
-            A.step(row, ts, r + 1)
-            if call == "HOLD":
-                B.step(row, ts, r + 1)
-        last = d.iloc[e - 1]
-        B.flatten(last.close, d.ts.iloc[e - 1], r + 1, "round boundary: Book B goes flat")
-        pnlA = A.equity(last.close) - eqA0
-        pnlB = B.equity(last.close) - eqB0
-        prev_pnl_b = pnlB
-        rounds.append(dict(
-            round=r + 1, start=d.ts.iloc[s].isoformat(), end=d.ts.iloc[e - 1].isoformat(),
-            start_idx=s, end_idx=e - 1, call=call, reason=why, autocorr=ac, prev_pnl_b=gate_prev,
-            pnl_a=pnlA, pnl_b=pnlB, pos_a=A.pos, pos_b=B.pos,
-            equity_a=A.equity(last.close), equity_b=B.equity(last.close),
-            fills=A.fills[nfA:] + B.fills[nfB:],
-        ))
+        s = start0 + r * bars_per_round
+        rd = play_round(d, s, s + bars_per_round - 1, A, B, r + 1, prev, ac_limit, loss_limit)
+        prev = rd["pnl_b"]
+        rounds.append(rd)
     return rounds, A, B

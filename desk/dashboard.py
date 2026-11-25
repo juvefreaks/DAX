@@ -27,8 +27,9 @@ def _clean(o):
     return o
 
 
-def render(data: dict, path: pathlib.Path):
-    html = TEMPLATE.replace("__PLOTLY__", PLOTLY).replace("__DATA__", json.dumps(_clean(data)))
+def render(data: dict, path: pathlib.Path, refresh: int | None = None):
+    meta = f'<meta http-equiv="refresh" content="{refresh}">' if refresh else ""
+    html = TEMPLATE.replace("__REFRESH__", meta).replace("__PLOTLY__", PLOTLY).replace("__DATA__", json.dumps(_clean(data)))
     path.write_text(html)
 
 
@@ -36,6 +37,7 @@ TEMPLATE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BTC Paper Desk</title>
+__REFRESH__
 <script src="__PLOTLY__"></script>
 <style>
 :root{--bg:#0b0e14;--panel:#11151e;--line:#1c2230;--tx:#c9d1d9;--mut:#7d8590;--up:#26a69a;--dn:#ef5350;--acc:#f5a623;--blue:#58a6ff}

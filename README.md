@@ -11,6 +11,16 @@ python webhook_receiver.py --port 8080 &
 python run_desk.py --webhook http://localhost:8080/round
 ```
 
+## 24/7 live mode
+```bash
+python live.py                                  # wakes every 5 min, Ctrl-C to stop
+python live.py --webhook http://localhost:8080/round
+python live.py --once                           # single cycle (testing / cron)
+```
+Plays each newly finished 5-minute round, keeps state in `out/state.json` (Book A carries its position, P&L is
+cumulative), appends to `out/live_rounds.jsonl`, and rewrites `out/desk.html` (auto-refreshes every 60 s).
+After downtime it replays missed rounds (up to `--max-catchup`). Needs a machine that stays on.
+
 ## How it works
 | Piece | File | What it does |
 |---|---|---|
