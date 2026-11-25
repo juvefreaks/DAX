@@ -61,15 +61,15 @@ table{width:100%;border-collapse:collapse;font-size:11.5px}td,th{padding:3px 6px
 td:first-child,th:first-child{text-align:left}
 footer{padding:10px 16px 24px;color:var(--mut);font-size:11.5px}
 </style></head><body>
-<header><h1>BTC PAPER DESK</h1>
+<header><h1 id="ttl">BTC PAPER DESK</h1>
 <div class="sub" id="sub"></div>
 <div class="sub warn">Paper trading only. A replay of recent candles is not evidence of future profit.</div></header>
 <div class="chips" id="chips"></div>
 <div class="grid">
-  <div class="panel"><h2>BTCUSDT 1m · EMA20 fair value · ±1 ATR band · rounds</h2><div id="chart" style="height:520px"></div></div>
+  <div class="panel"><h2 id="ch">EMA20 fair value · ±1 ATR band · rounds</h2><div id="chart" style="height:520px"></div></div>
   <div class="panel"><h2>Decision terminal</h2><div id="term"></div></div>
 </div>
-<div class="grid">
+<div class="grid" id="grid2">
   <div class="panel"><h2>Deribit implied-vol surface (SVI fit per expiry)</h2><div id="surf" style="height:520px"></div></div>
   <div class="panel"><h2>SVI parameters</h2><div id="svi"></div>
     <h2 style="margin-top:14px">Profiler (replay hot spots)</h2><div id="prof"></div></div>
@@ -77,19 +77,23 @@ footer{padding:10px 16px 24px;color:var(--mut);font-size:11.5px}
 <footer id="foot"></footer>
 <script>
 const D=__DATA__;
-const f=(x,d=2)=>x==null?'–':Number(x).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const DEC=D.meta.dec??2;const f=(x,d=DEC)=>x==null?'–':Number(x).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
 const sg=x=>(x>=0?'+':'')+f(x);const cl=x=>x>=0?'pos':'neg';
-document.getElementById('sub').textContent=`${D.meta.symbol} · ${D.meta.rounds} rounds × ${D.meta.bars_per_round} min · fee ${D.meta.fee_bps} bps · cap ${D.meta.cap} BTC · data: ${D.meta.source}`;
+document.getElementById('ttl').textContent=D.meta.title||'BTC PAPER DESK';document.title=D.meta.title||'BTC Paper Desk';
+document.getElementById('ch').textContent=`${D.meta.symbol} ${D.meta.interval} · EMA20 fair value · ±1 ATR band · rounds`;
+const CCY=D.meta.ccy_label||'USD',UNIT=D.meta.unit||'BTC';
+document.getElementById('sub').textContent=`${D.meta.symbol} · ${D.meta.rounds} rounds × ${D.meta.bars_per_round} × ${D.meta.interval} bars · fee ${D.meta.fee_label} · cap ${D.meta.cap} ${UNIT} · data: ${D.meta.source}`;
+if(D.meta.hide_surface)document.getElementById('grid2').style.display='none';
 const S=D.summary,V=D.surface;
-const chips=[['BTC last','$'+f(S.last)],['Book A (always on)',`<span class="${cl(S.pnl_a)}">${sg(S.pnl_a)} USD</span>`],
-['Book B (gated)',`<span class="${cl(S.pnl_b)}">${sg(S.pnl_b)} USD</span>`],['Fees A / B',`${f(S.fees_a)} / ${f(S.fees_b)}`],
+const chips=[[D.meta.symbol+' last',f(S.last)],['Book A (always on)',`<span class="${cl(S.pnl_a)}">${sg(S.pnl_a)} ${CCY}</span>`],
+['Book B (gated)',`<span class="${cl(S.pnl_b)}">${sg(S.pnl_b)} ${CCY}</span>`],['Fees A / B',`${f(S.fees_a)} / ${f(S.fees_b)}`],
 ['HOLD / FLAT calls',`${S.holds} / ${S.flats}`],['2nd opinion agrees',`${S.agree} / ${D.meta.rounds}`]];
 if(V)chips.push(['SVI fits kept / rejected',`${V.n_expiries} / ${V.n_rejected}`],['1M ATM vol',f(V.atm_1m)+'%'],['25Δ skew (1M)',f(V.skew25_1m)+' pts'],['Strikes / expiries',`${V.n_strikes} / ${V.n_expiries}`]);
 document.getElementById('chips').innerHTML=chips.map(c=>`<div class="chip"><span>${c[0]}</span><b>${c[1]}</b></div>`).join('');
 // chart
 const C=D.candles,x=C.map(r=>r.ts);
 const tr=[{type:'candlestick',x,open:C.map(r=>r.open),high:C.map(r=>r.high),low:C.map(r=>r.low),close:C.map(r=>r.close),
- increasing:{line:{color:'#26a69a'}},decreasing:{line:{color:'#ef5350'}},name:'BTCUSDT'},
+ increasing:{line:{color:'#26a69a'}},decreasing:{line:{color:'#ef5350'}},name:D.meta.symbol},
  {x,y:C.map(r=>r.ema),mode:'lines',line:{color:'#f5a623',width:1.5},name:'fair (EMA20)'},
  {x,y:C.map(r=>r.ema+r.atr),mode:'lines',line:{color:'#58a6ff',width:1,dash:'dot'},name:'+1 ATR'},
  {x,y:C.map(r=>r.ema-r.atr),mode:'lines',line:{color:'#58a6ff',width:1,dash:'dot'},name:'−1 ATR'}];
@@ -105,7 +109,7 @@ for(const r of D.rounds){shapes.push({type:'rect',xref:'x',yref:'paper',x0:r.sta
  ann.push({x:r.start,y:1,xref:'x',yref:'paper',text:`R${r.round} ${r.call}`,showarrow:false,xanchor:'left',yanchor:'bottom',
  font:{size:9,color:r.call==='FLAT'?'#ef5350':'#7d8590'}})}
 Plotly.newPlot('chart',tr,{paper_bgcolor:'#11151e',plot_bgcolor:'#0b0e14',font:{color:'#c9d1d9',size:11},margin:{l:10,r:60,t:18,b:30},
- xaxis:{rangeslider:{visible:false},gridcolor:'#1c2230'},yaxis:{side:'right',gridcolor:'#1c2230'},shapes,annotations:ann,
+ xaxis:{rangeslider:{visible:false},gridcolor:'#1c2230',rangebreaks:D.meta.session_breaks?[{bounds:['sat','mon']},{bounds:[16,9],pattern:'hour'},{bounds:[12,13.5],pattern:'hour'}]:[]},yaxis:{side:'right',gridcolor:'#1c2230'},shapes,annotations:ann,
  legend:{orientation:'h',y:-0.08,font:{size:10}}},{responsive:true,displaylogo:false});
 // terminal
 document.getElementById('term').innerHTML=D.rounds.slice().reverse().map(r=>`<div class="rd"><div class="h"><span>R${r.round} <span class="tag ${r.call}">${r.call}</span>

@@ -11,6 +11,20 @@ python webhook_receiver.py --port 8080 &
 python run_desk.py --webhook http://localhost:8080/round
 ```
 
+## Indonesian stocks (IDX)
+```bash
+pip install yfinance
+python run_desk.py --market idx --ticker BBCA                       # 15m candles, 4 per round
+python run_desk.py --market idx --ticker TLKM --interval 5m --bars 6 --rounds 20
+python backtest_idx.py --intervals 5m,15m,60m                       # 12 LQ45 names -> out/idx_backtest.csv
+```
+IDX profile (`desk/markets.py`): fee 15 bps buy / 25 bps sell (rough retail estimate, override with
+`--fee-buy-bps/--fee-sell-bps`), long-only, position in whole lots (default 1000 shares), rounds never straddle
+the lunch break or the close, and Book A is flat at every session break. No option surface for IDX.
+Yahoo data is delayed and limited (1m ~7 days, 5m/15m ~60 days, 60m ~2 years). `live.py` is crypto-only.
+
+The timeframe is a parameter: `--interval` and `--bars` (candles per round).
+
 ## 24/7 live mode
 ```bash
 python live.py                                  # wakes every 5 min, Ctrl-C to stop
@@ -35,4 +49,5 @@ After downtime it replays missed rounds (up to `--max-catchup`). Needs a machine
 ## Not done / honest notes
 - **magic-trace** (Jane Street) needs Linux x86 with Intel PT, so `--profile` uses `cProfile` instead.
 - **nanochat** trains a GPT from scratch on GPUs and is not wired in; `SecondOpinion` has a minimal interface so it can be swapped later.
+- IDX backtest caveat: very cheap stocks (e.g. GOTO at Rp 23-50) are dominated by the Rp 1 tick size and flat candles; ignore them.
 - One replay window is a demo, not a backtest. No claim of profitability; the first live run lost money on both books.

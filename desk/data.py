@@ -12,11 +12,18 @@ BINANCE_KLINES = "https://data-api.binance.vision/api/v3/klines"
 DERIBIT_SUMMARY = "https://www.deribit.com/api/v2/public/get_book_summary_by_currency"
 
 
-def fetch_candles(symbol: str = "BTCUSDT", limit: int = 1000) -> pd.DataFrame:
-    """Latest `limit` one-minute candles; the still-forming last candle is dropped."""
+def interval_minutes(interval: str) -> int:
+    """'1m' -> 1, '15m' -> 15, '1h' -> 60."""
+    n = int(interval[:-1])
+    return n * 60 if interval.endswith("h") else n
+
+
+def fetch_candles(symbol: str = "BTCUSDT", limit: int = 1000, interval: str = "1m") -> pd.DataFrame:
+    """Latest `limit` candles; the still-forming last candle is dropped."""
+    mins = interval_minutes(interval)
     r = requests.get(
         BINANCE_KLINES,
-        params={"symbol": symbol, "interval": "1m", "limit": limit},
+        params={"symbol": symbol, "interval": f"{mins // 60}h" if mins % 60 == 0 else f"{mins}m", "limit": limit},
         timeout=20,
     )
     r.raise_for_status()
@@ -28,6 +35,36 @@ def fetch_candles(symbol: str = "BTCUSDT", limit: int = 1000) -> pd.DataFrame:
     for c in ["open", "high", "low", "close", "volume"]:
         df[c] = df[c].astype(float)
     return df.iloc[:-1].reset_index(drop=True)
+
+
+# Yahoo Finance history limits per interval
+_YF_PERIOD = {"1m": "7d", "2m": "60d", "5m": "60d", "15m": "60d", "30m": "60d", "60m": "730d"}
+
+
+def fetch_idx_candles(ticker: str, interval: str = "15m", period: str | None = None) -> pd.DataFrame:
+    """IDX stock candles from Yahoo Finance (delayed, trading hours only), timestamps in Asia/Jakarta."""
+    try:
+        import yfinance as yf
+    except ImportError as e:  # pragma: no cover
+        raise RuntimeError("pip install yfinance") from e
+    mins = interval_minutes(interval)
+    yf_int = f"{mins}m"
+    df = yf.download(ticker, period=period or _YF_PERIOD.get(yf_int, "60d"), interval=yf_int,
+                     progress=False, auto_adjust=False)
+    if df is None or df.empty:
+        raise RuntimeError(f"no data for {ticker} {interval} (Yahoo rate limit or wrong ticker?)")
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    df = df.reset_index().rename(columns=lambda c: str(c).lower())
+    df = df.rename(columns={df.columns[0]: "ts"})
+    df = df[["ts", "open", "high", "low", "close", "volume"]].dropna()
+    df["ts"] = pd.to_datetime(df["ts"], utc=True).dt.tz_convert("Asia/Jakarta")
+    for c in ["open", "high", "low", "close", "volume"]:
+        df[c] = df[c].astype(float)
+    df = df.sort_values("ts").drop_duplicates("ts").reset_index(drop=True)
+    if df["ts"].iloc[-1] + pd.Timedelta(minutes=mins) > pd.Timestamp.now(tz="UTC"):
+        df = df.iloc[:-1]  # bar still forming
+    return df.reset_index(drop=True)
 
 
 def synthetic_candles(n: int = 1000, seed: int = 7, start_price: float = 60000.0) -> pd.DataFrame:

@@ -31,16 +31,18 @@ class SecondOpinion:
         c, ema, atr, ret = (d[k].to_numpy() for k in ("close", "ema", "atr", "ret"))
         n = len(d)
         self.h = horizon
-        self.z = (c - ema) / atr                                   # signed distance from fair, in ATR
+        safe_atr = np.where(atr > 0, atr, np.nan)                  # flat candles (illiquid stocks) have ATR 0
+        self.z = np.nan_to_num((c - ema) / safe_atr)               # signed distance from fair, in ATR
         self.close = c
         ac = np.zeros(n)
         for i in range(ac_n + 1, n):                               # autocorr of the ac_n returns before bar i
             r = ret[i - ac_n:i]
-            s = r.std()
-            ac[i] = 0.0 if s == 0 else np.corrcoef(r[:-1], r[1:])[0, 1]
+            a_, b_ = r[:-1], r[1:]
+            if a_.std() > 0 and b_.std() > 0:
+                ac[i] = np.corrcoef(a_, b_)[0, 1]
         mom = np.zeros(n)
         mom[5:] = (c[5:] / c[:-5] - 1) * 1e4
-        self.ac, self.mom, self.atr_bps = ac, mom, atr / c * 1e4
+        self.ac, self.mom, self.atr_bps = ac, mom, np.nan_to_num(atr / c * 1e4)
 
     def _feat(self, i):
         j = i - 1
